@@ -3,21 +3,24 @@
 const el = id => document.getElementById(id);
 const dialog = el("terminal");
 const screen = el("screen");
-const saveKey = "signal-vault-campaign-v1";
-let save = {cleared:[], sector:0, best:null};
+const saveKey = "signal-vault-campaign-v2";
+const legacySaveKey = "signal-vault-campaign-v1";
+let save = {cleared:[], sector:0, best:null, jobs:Array(operations.length).fill(0), uplink:0};
 let storageAvailable = true;
 try {
-  const stored = JSON.parse(localStorage.getItem(saveKey) || "null");
-  if (stored && Array.isArray(stored.cleared)) {
-    save.cleared = [...new Set(stored.cleared.filter(i => Number.isInteger(i) && i>=0 && i<sectors.length))];
+  const stored = JSON.parse(localStorage.getItem(saveKey) || localStorage.getItem(legacySaveKey) || "null");
+  if (stored) {
     if (Number.isInteger(stored.sector) && stored.sector>=0 && stored.sector<sectors.length) save.sector=stored.sector;
     if (Number.isFinite(stored.best)) save.best=stored.best;
+    save.jobs=save.jobs.map((_,i)=>Math.max(0,Math.min(operations[i].length,Number(stored.jobs?.[i])|0)));
+    save.uplink=Math.max(0,Math.min(capstones.length,Number(stored.uplink)|0));
+    save.cleared=save.jobs.flatMap((jobs,i)=>jobs===operations[i].length ? [i] : []);
   }
 } catch {
   storageAvailable=false;
 }
 let current = -1;
-const world = makeWorld(el("world"), selectSector);
+const world = makeWorld(el("world"), selectSector, index=>save.cleared.includes(index));
 const map = el("map");
 const destination = sectors.map(({title},i) => {
   const button=document.createElement("button");
@@ -38,12 +41,13 @@ function persist() {
 function renderProgress() {
   destination.forEach((button,i)=>{
     button.setAttribute("aria-current",String(i===current));
-    button.lastElementChild.textContent=save.cleared.includes(i) ? "✓" : "·";
+    button.lastElementChild.textContent=save.cleared.includes(i) ? "✓" : `${save.jobs[i]}/${operations[i].length}`;
     button.setAttribute("aria-label",`${sectors[i].title}${save.cleared.includes(i) ? ", restored" : ""}`);
   });
   el("progress").value=save.cleared.length;
   el("progress-text").textContent=`${save.cleared.length} / ${sectors.length} sectors restored`;
-  el("world-status").textContent=storageAvailable ? (save.cleared.length===sectors.length ? "Grid online" : "Progress saved on this device") : "Progress is stored for this session";
+  el("finale").textContent=save.uplink===capstones.length ? "Uplink online" : "City uplink";
+  el("world-status").textContent=storageAvailable ? (save.uplink===capstones.length ? "Grid online" : "Progress saved on this device") : "Progress is stored for this session";
   el("exam").textContent=save.best===null ? "Final exam" : `Final exam · best ${save.best}%`;
 }
 function selectSector(index) {
@@ -64,123 +68,115 @@ function show(label,title,html) {
   dialog.scrollTop=0;
 }
 
-function installLab(kind) {
-  const lab = el("lab");
-  if (!lab) return;
-  let state=0;
-  const config={
-    gate: {names:["A","B"], output: ([a,b]) => `Y = ${gate[el("operator").value](a,b)}`},
-    adder: {names:["A","B"], output: ([a,b]) => `Carry = ${a&b} · Sum = ${a^b} · Total = ${a+b}`},
-    mux: {names:["B","A","D0","D1","D2","D3"], output: ([b,a,...data]) => `D${2*b+a} selected · Y = ${data[2*b+a]}`},
-    demux: {names:["B","A","X"], output: ([b,a,x]) => `D0 D1 D2 D3 = ${[0,1,2,3].map(i=>i===2*b+a?x:0).join(" ")}`},
-    clock: {names:["D"], output: () => `Q = ${state}`},
-    mask: {names:["b7","b6","b5","b4","b3","b2","b1","b0"], output: data => {
-      const byte=parseInt(data.join(""),2);
-      return `Byte ${digits(byte,16).padStart(2,"0")} · AND F0 → ${digits(byte&240,16).padStart(2,"0")} · XOR 0F → ${digits(byte^15,16).padStart(2,"0")}`;
-    }}
-  }[kind];
-  const values=config.names.map(()=>0);
-  lab.innerHTML=`<strong>Interactive circuit bench</strong><div id="switches"></div>
-    ${kind==="gate" ? `<label>Gate <select id="operator">${Object.keys(gate).map(name=>`<option>${name}</option>`).join("")}</select></label>` : ""}
-    ${kind==="clock" ? '<button id="edge">Pulse rising edge</button>' : ""}
-    <output id="lab-out" aria-live="polite"></output>`;
-  const update=()=>{el("lab-out").textContent=config.output(values);};
-  config.names.forEach((name,i)=>{
-    const button=document.createElement("button");
-    const label=()=>{button.textContent=`${name} = ${values[i]}`;button.setAttribute("aria-pressed",String(Boolean(values[i])));};
-    button.onclick=()=>{values[i]^=1;label();update();};
-    label();
-    el("switches").append(button);
-  });
-  if (kind==="gate") el("operator").onchange=update;
-  if (kind==="clock") el("edge").onclick=()=>{state=values[0];update();};
-  update();
+function fieldNotes(sector) {
+  return `<details><summary>Open field manual</summary>
+    <ol>${sector.notes.map(note=>`<li>${note}</li>`).join("")}</ol>
+    <div class="worked"><strong>Worked example</strong>${sector.example}</div>
+  </details>`;
 }
 
 function lessonScreen() {
-  const index=current;
-  const sector=sectors[index];
+  const index=current, sector=sectors[index], orders=operations[index];
+  const complete=save.jobs[index];
   show(sector.topic,sector.title,`
     <p class="story">${sector.story}</p>
-    <h3>Field notes</h3>
-    <ol>${sector.notes.map(note=>`<li>${note}</li>`).join("")}</ol>
-    <div class="worked"><strong>Worked example</strong>${sector.example}</div>
-    ${sector.lab ? '<div id="lab" class="lab"></div>' : ""}
-    <div class="actions"><button class="primary" id="mission">${save.cleared.includes(index) ? "Replay challenges" : "Start mission"}</button>
-    <button id="extra">Generate practice</button></div>`);
-  installLab(sector.lab);
-  el("mission").onclick=()=>practice(index,[...sector.practice,generate(index,true)],true);
-  el("extra").onclick=()=>practice(index,[],false);
+    <p>${complete} of ${orders.length} work orders commissioned</p>
+    <div class="jobs">${orders.map((order,i)=>`
+      <button data-job="${i}" ${i>complete?"disabled":""}>
+      <span>${i<complete?"✓":String(i+1).padStart(2,"0")}</span><strong>${order.name}</strong>
+      <span>${i<complete?"Replay":i===complete?"Open":"Pending"}</span></button>`).join("")}</div>
+    ${fieldNotes(sector)}`);
+  if (complete<orders.length) screen.querySelector(`[data-job="${complete}"]`).classList.add("primary");
+  screen.querySelectorAll("[data-job]").forEach(button=>{
+    button.onclick=()=>launchOrder(index,Number(button.dataset.job));
+  });
 }
 
-function practice(index, questions, mission) {
-  const sector=sectors[index];
-  let step=0, solved=0, attempts=0;
-  function next() {
-    if (mission && step===questions.length) {
-      save.cleared=[...new Set([...save.cleared,index])];
-      persist();
-      renderProgress();
-      show("Mission complete",sector.title,`
-        <p class="story">${save.cleared.length===sectors.length ? "All twelve sectors are online. The city has power. Run the final systems check." : "The terminal accepts your repair. The signal returns to this sector."}</p>
-        <p>You solved all five challenges in ${attempts} answer checks.</p>
-        <div class="actions"><button class="primary" id="advance">${index===sectors.length-1 ? "Open final exam" : "Travel to next sector"}</button><button id="revisit">Review field notes</button></div>`);
-      el("advance").onclick=()=>{
-        if (index===sectors.length-1) examBrief();
-        else { dialog.close(); world.jump(index+1); }
-      };
-      el("revisit").onclick=lessonScreen;
-      return;
+function uplinkScreen() {
+  show("City uplink","Commission the city grid",`
+    <p class="story">The districts can talk again. The uplink must translate, protect, route, store, and commit a live handover before the city can return to normal.</p>
+    ${save.cleared.length<sectors.length ?
+      `<p>Restore every sector to unlock the city uplink. ${save.cleared.length} of ${sectors.length} sectors are online.</p>` :
+      `<p>${save.uplink} of ${capstones.length} commissioning stages passed.</p>
+      <div class="jobs">${capstones.map((order,i)=>`<button data-job="${i}" ${i>save.uplink?"disabled":""}>
+      <span>${i<save.uplink?"✓":String(i+1).padStart(2,"0")}</span><strong>${order.name}</strong>
+      <span>${i<save.uplink?"Replay":i===save.uplink?"Open":"Pending"}</span></button>`).join("")}</div>`}`);
+  screen.querySelectorAll("[data-job]").forEach(button=>{
+    button.onclick=()=>launchOrder(null,Number(button.dataset.job));
+  });
+}
+
+function launchOrder(index, step) {
+  const finale=index===null;
+  const sector=finale ? null : sectors[index];
+  const orders=finale ? capstones : operations[index];
+  const order=orders[step];
+  const back=finale ? uplinkScreen : lessonScreen;
+  let bench=makeWorkbench(order);
+  show(`Work order ${step+1} / ${orders.length}`,order.name,`
+    <p class="story">${order.brief}</p>
+    <div class="workbench" id="bench"></div>
+    <div class="actions"><button id="commission" class="primary">Run commissioning test</button>
+    <button id="reset-bench">Reset bench</button><button id="return-to-sector">Work orders</button></div>
+    <div class="feedback" id="bench-feedback" role="status"></div>
+    <details><summary>Field note</summary><p>${order.principle}</p></details>
+    ${sector ? fieldNotes(sector) : ""}`);
+  const panel=el("bench");
+  const feedback=el("bench-feedback");
+  const draw=()=>{panel.innerHTML=bench.view();};
+  function update(target){
+    const scroll=dialog.scrollTop;
+    const key=target.dataset.key, action=target.dataset.action, index=target.dataset.index;
+    feedback.textContent="";
+    draw();
+    const control=[...panel.querySelectorAll("[data-key], [data-action]")].find(item=>
+      key!==undefined ? item.dataset.key===key : item.dataset.action===action && item.dataset.index===index);
+    (control && !control.disabled ? control : panel.querySelector("button:not(:disabled), select") || el("commission")).focus({preventScroll:true});
+    dialog.scrollTop=scroll;
+  }
+  panel.onchange=event=>{
+    const target=event.target.closest("select[data-key]");
+    if(target){bench.change(target.dataset.key,target.value);update(target);}
+  };
+  panel.onclick=event=>{
+    const target=event.target.closest("button[data-action]");
+    if(target){bench.act(target.dataset.action,Number(target.dataset.index));update(target);}
+  };
+  el("return-to-sector").onclick=back;
+  el("reset-bench").onclick=()=>{bench=makeWorkbench(order);feedback.textContent="Bench reset.";draw();};
+  el("commission").onclick=()=>{
+    const issue=bench.result();
+    if(issue){feedback.textContent=issue;return;}
+    if(finale) save.uplink=Math.max(save.uplink, step+1);
+    else {
+      save.jobs[index]=Math.max(save.jobs[index],step+1);
+      if(save.jobs[index]===orders.length && !save.cleared.includes(index)) save.cleared.push(index);
     }
-    const question=mission ? questions[step] : generate(index,step%3===2);
-    show(mission ? `Mission challenge ${step+1} / ${questions.length}` : `Practice · ${solved} solved`,sector.title,`
-      <form id="answer-form">
-        <label for="answer">${question.prompt}</label>
-        <input id="answer" name="answer" autocomplete="off" spellcheck="false" required>
-        <div id="feedback" class="feedback" role="status"></div>
-        <div class="actions">
-          <button class="primary" id="check">Check answer</button>
-          <button type="button" id="hint">Hint</button>
-          <button type="button" id="solution">Show solution</button>
-          <button type="button" id="notes">Field notes</button>
-        </div>
-      </form>`);
-    const input=el("answer"), feedback=el("feedback"), check=el("check");
-    input.focus();
-    el("hint").onclick=()=>{feedback.textContent=question.hint;};
-    el("notes").onclick=lessonScreen;
-    function finish(correct) {
-      input.disabled=true;
-      el("hint").disabled=true;
-      el("solution").disabled=true;
-      check.type="button";
-      check.textContent=correct ? "Continue" : "Try a new question";
-      feedback.classList.toggle("success",correct);
-      feedback.textContent=`${correct ? "Correct." : `Answer: ${question.answer}.`} ${question.why}`;
-      if (correct) {
-        step++;
-        solved++;
-      } else if (mission) {
-        questions[step]=generate(index,true);
-      } else {
-        step++;
-      }
-      check.onclick=next;
-      check.focus();
-    }
-    el("solution").onclick=()=>finish(false);
-    el("answer-form").onsubmit=event=>{
-      event.preventDefault();
-      if (input.disabled) return;
-      attempts++;
-      if (matches(input.value,question)) finish(true);
+    persist();
+    renderProgress();
+    world.redraw();
+    const last=step+1===orders.length;
+    show("Commissioning passed",order.name,`
+      <p class="story">${last ? finale ? "The city accepts the handover. The grid is online." :
+        "The sector is back on the grid. Its terminal will now show a live status light." :
+        "The equipment passed its acceptance test. The next instrument is ready."}</p>
+      <p>${order.principle}</p>
+      <div class="actions"><button id="next-order" class="primary">${last ? finale ? "Open final exam" :
+        save.cleared.length===sectors.length ? "Open city uplink" : "Travel to next unrestored sector" : "Open next work order"}</button>
+      <button id="back-orders">Work orders</button></div>`);
+    el("back-orders").onclick=back;
+    el("next-order").onclick=()=>{
+      if(!last) launchOrder(index,step+1);
+      else if(finale) examBrief();
+      else if(save.cleared.length===sectors.length) uplinkScreen();
       else {
-        feedback.textContent="Check your working and try again. A hint is available.";
-        input.select();
+        const candidates=sectors.map((_,i)=>(index+1+i)%sectors.length);
+        world.jump(candidates.find(i=>!save.cleared.includes(i)));
+        lessonScreen();
       }
     };
-  }
-  next();
+  };
+  draw();
 }
 
 function examBrief() {
@@ -260,5 +256,5 @@ document.querySelectorAll("[data-move]").forEach(button=>{
 el("close").onclick=()=>dialog.close();
 el("open").onclick=lessonScreen;
 el("exam").onclick=examBrief;
-el("drill").onclick=()=>practice(current,[],false);
+el("finale").onclick=uplinkScreen;
 world.jump(save.sector);

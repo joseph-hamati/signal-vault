@@ -1,6 +1,6 @@
 "use strict";
 
-function makeWorld(canvas, onPosition) {
+function makeWorld(canvas, onPosition, isRestored) {
   const ctx = canvas.getContext("2d");
   const spacing = 10;
   const end = sectors.length * spacing;
@@ -52,6 +52,8 @@ function makeWorld(canvas, onPosition) {
     const rack = i%2===0 ? 2.0 : -3.45;
     box(rack,0,z+5.2,1.45,2.45,.9,["#26394b","#132330","#385363"],"#466471");
     face([[rack+.11,1.25,z+5.18],[rack+1.34,1.25,z+5.18],[rack+1.34,2.22,z+5.18],[rack+.11,2.22,z+5.18]],"#09212b",tint);
+    face([[rack+.17,1.98,z+5.16],[rack+.33,1.98,z+5.16],[rack+.33,2.09,z+5.16],[rack+.17,2.09,z+5.16]],
+      ()=>isRestored(i) ? "#80ffd0" : "#ff835b");
     for (let n=0;n<5;n++) {
       const x=rack+.24+n*.21;
       const y=1.38+(n%3)*.13;
@@ -105,7 +107,7 @@ function makeWorld(canvas, onPosition) {
       ctx.moveTo(...screen[0]);
       screen.slice(1).forEach(point=>ctx.lineTo(...point));
       ctx.closePath();
-      ctx.fillStyle=color;
+      ctx.fillStyle=typeof color==="function" ? color() : color;
       ctx.fill();
       if (line) {
         ctx.lineWidth=ratio;
@@ -139,6 +141,7 @@ function makeWorld(canvas, onPosition) {
   requestAnimationFrame(tick);
   return {
     keys,
+    redraw:draw,
     jump(index) {
       keys.clear();
       Object.assign(camera,{x:0,z:index*spacing+1,yaw:0});
