@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b111b">
+<title>Signal Vault — Digital Logic Campaign</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="curriculum.js"></script>
+<script defer src="world.js"></script>
+<script defer src="game.js"></script>
+</head>
+<body>
+<header class="top"><a href="./" class="brand"><span>◈</span> SIGNAL VAULT</a><span class="edition">DIGITAL SYSTEMS / FIELD TRAINING</span><button id="exam">Final exam</button></header>
+<main>
+<section class="intro"><div><p class="eyebrow">MODULES 05–06 / CAMPAIGN</p><h1>Restore the <em>signal.</em></h1><p>The city has gone dark. Rebuild its digital systems, one sector at a time.</p></div><div class="progress"><span id="progress-text"></span><progress id="progress" max="12" value="0"></progress></div></section>
+<div class="layout">
+<section aria-label="3D vault">
+<div class="scene">
+<canvas id="world" aria-hidden="true"></canvas>
+<div class="location"><span id="sector" class="eyebrow"></span><strong id="location"></strong></div>
+<div class="reticle" aria-hidden="true">+</div>
+<div class="scene-bottom"><span id="world-status"></span><button id="open" class="primary">Open terminal <span aria-hidden="true">↗</span></button></div>
+</div>
+<div class="controls"><span>WASD / arrows to move · E to interact</span><div aria-label="Movement controls"><button data-move="left" aria-label="Turn left">←</button><button data-move="forward" aria-label="Walk forward">↑</button><button data-move="back" aria-label="Walk backward">↓</button><button data-move="right" aria-label="Turn right">→</button></div></div>
+</section>
+<aside class="map"><div class="map-heading"><h2>Sector map</h2><button id="drill">Practice</button></div><nav id="map" aria-label="Campaign sectors"></nav></aside>
+</div>
+</main>
+<dialog id="terminal" aria-labelledby="dialog-title"><header><div><p id="dialog-label" class="eyebrow"></p><h2 id="dialog-title"></h2></div><button id="close" aria-label="Close terminal">✕</button></header><div id="screen"></div></dialog>
+</body>
+</html>
